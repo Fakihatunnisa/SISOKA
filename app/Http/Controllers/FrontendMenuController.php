@@ -1,0 +1,25 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use App\Models\DynamicMenu;
+
+class FrontendMenuController extends Controller
+{
+    public function show($slug)
+    {
+        $menu = DynamicMenu::where('slug', $slug)
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        // If spreadsheet allows direct editing on the website, only show it to logged in users
+        $meta = is_array($menu->meta) ? $menu->meta : json_decode($menu->meta ?? '[]', true);
+        if ($menu->type === 'spreadsheet' && !empty($meta['allow_edit']) && !auth()->check()) {
+            abort(403, 'Akses ditolak. Menu ini hanya dapat diakses oleh pengguna yang sudah login.');
+        }
+
+        return view('dynamic_menus.show', compact('menu'));
+    }
+}

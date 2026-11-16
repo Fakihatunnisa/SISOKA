@@ -1,0 +1,635 @@
+@extends('layouts.admin')
+
+@section('title', 'Data Kemiskinan - BPS Kalbar')
+
+@section('content')
+    <div class="fade-in-up">
+        <!-- Header -->
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+            <div>
+                <h2 class="fw-bold mb-1" style="color: var(--bps-orange);">Kemiskinan Wilayah</h2>
+                <p class="text-muted mb-0">Perbandingan tingkat kemiskinan Kalimantan Barat</p>
+            </div>
+            <form action="{{ route('poverty') }}" method="GET" class="mt-3 mt-md-0 d-flex gap-2">
+
+                <select name="tahun" class="form-select border-0 shadow-sm" style="min-width: 150px;">
+                    <option value="all" {{ $selectedTahun == 'all' ? 'selected' : '' }}>
+                        Semua Tahun
+                    </option>
+
+                    @foreach ($availableYears as $year)
+                        <option value="{{ $year }}" {{ $selectedTahun == $year ? 'selected' : '' }}>
+                            Tahun {{ $year }}
+                        </option>
+                    @endforeach
+                </select>
+
+                <button type="submit" class="btn btn-primary text-white"
+                    style="background-color: var(--bps-blue); border: none;">
+                    <i class="fas fa-filter"></i> Filter
+                </button>
+                @if (auth()->check() == true)
+                    @if (auth()->user()->status == 'active' && auth()->user()->kabupaten->kode_kab == '6100')
+
+                        <a href="{{ route('poverty.input') }}" class="btn btn-success text-white"
+                            style="background-color: var(--bps-green); border: none;">
+                            <i class="fas fa-plus"></i> Input Data
+                        </a>
+                    @endif
+
+                @endif
+
+            </form>
+
+        </div>
+
+
+
+        <!-- Interactive Map/Detailed Stats Grid -->
+        <div class="row g-4 mb-4">
+            <!-- Highlights -->
+            <!-- <div class="col-lg-4">
+                                                                                                                                                                                                                                                                                                                                    <div class="stats-card h-100 bg-orange-faded border-0">
+                                                                                                                                                                                                                                                                                                                                        <h5 class="fw-bold text-dark mb-3">Provinsi Kalimantan Barat</h5>
+                                                                                                                                                                                                                                                                                                                                        <div class="d-flex align-items-end mb-2">
+                                                                                                                                                                                                                                                                                                                                            <h1 class="fw-bold mb-0 text-orange" style="font-size: 2.5rem;">
+                                                                                                                                                                                                                                                                                                                                                Rp {{ number_format($provAvg, 0, ',', '.') }}
+                                                                                                                                                                                                                                                                                                                                            </h1>
+                                                                                                                                                                                                                                                                                                                                            <span class="mb-2 ms-2 fw-medium text-muted">{{ $latestLabel }}</span>
+                                                                                                                                                                                                                                                                                                                                        </div>
+                                                                                                                                                                                                                                                                                                                                        <p class="text-muted small">Rata-rata nilai (Rp) dari seluruh Kabupaten/Kota di Kalimantan Barat.</p>
+                                                                                                                                                                                                                                                                                                                                        <hr style="border-color: rgba(0,0,0,0.1);">
+                                                                                                                                                                                                                                                                                                                                        <div class="d-flex justify-content-between">
+                                                                                                                                                                                                                                                                                                                                            <div>
+                                                                                                                                                                                                                                                                                                                                                <small class="text-muted d-block">Garis Kemiskinan</small>
+                                                                                                                                                                                                                                                                                                                                                <span class="fw-bold">Rp {{ number_format($provGK, 0, ',', '.') }}</span>
+                                                                                                                                                                                                                                                                                                                                            </div>
+                                                                                                                                                                                                                                                                                                                                            <div>
+                                                                                                                                                                                                                                                                                                                                                <small class="text-muted d-block">Penduduk Miskin</small>
+                                                                                                                                                                                                                                                                                                                                                <span class="fw-bold">{{ number_format($provCount, 2, ',', '.') }} Ribu</span>
+                                                                                                                                                                                                                                                                                                                                            </div>
+                                                                                                                                                                                                                                                                                                                                        </div>
+                                                                                                                                                                                                                                                                                                                                    </div>
+                                                                                                                                                                                                                                                                                                                                </div> -->
+
+            <!-- Trend Chart by Regency -->
+            <div class="col-lg-12">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 12px;">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <div>
+                                <h5 class="fw-bold mb-1">Grafik Nilai Kemiskinan per Persentil</h5>
+                                <p class="text-muted small mb-0">Sumbu Y: Rupiah | Sumbu X: Persentil | Garis: Variabel &
+                                    Tahun</p>
+                            </div>
+                            <div
+                                class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+                                <div class="btn-group p-1 bg-light" role="group" style="border-radius: 10px;">
+                                    <button type="button" class="btn btn-sm border-0 chart-type-btn active" data-type="line"
+                                        title="Grafik Garis" style="border-radius: 8px; transition: all 0.2s;">
+                                        <i class="fas fa-chart-line"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm border-0 chart-type-btn" data-type="bar"
+                                        title="Grafik Balok" style="border-radius: 8px; transition: all 0.2s;">
+                                        <i class="fas fa-chart-bar"></i>
+                                    </button>
+                                </div>
+
+                                <div class="dropdown">
+                                    <button class="btn btn-light border-0 shadow-sm dropdown-toggle fw-bold" type="button"
+                                        id="variableFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                                        style="border-radius: 8px;">
+                                        <i class="fas fa-filter me-1"></i> Pilih Variabel
+                                    </button>
+                                    <div class="dropdown-menu p-3 shadow-lg border-0"
+                                        aria-labelledby="variableFilterDropdown"
+                                        style="width: 300px; max-height: 400px; overflow-y: auto; border-radius: 12px;">
+                                        <div class="input-group mb-2">
+                                            <span class="input-group-text bg-white border-end-0"><i
+                                                    class="fas fa-search text-muted"></i></span>
+                                            <input type="text" class="form-control border-start-0 ps-0"
+                                                id="variableSearchInput" placeholder="Cari variabel..."
+                                                style="box-shadow: none;">
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <small class="text-muted fw-bold">Daftar Variabel</small>
+                                            <div>
+                                                <a href="#" class="text-decoration-none small me-2"
+                                                    id="checkAllVars">All</a>
+                                                <a href="#" class="text-decoration-none small text-muted"
+                                                    id="uncheckAllVars">None</a>
+                                            </div>
+                                        </div>
+                                        <div id="variableListContainer">
+                                            <!-- Checkboxes will be populated by JS -->
+                                        </div>
+                                    </div>
+                                </div>
+                                <select class="form-select w-100 w-md-auto border-0 bg-light fw-bold"
+                                    id="regencySelectorChart" style="border-radius: 8px;">
+                                    <option value="all" class="text-primary font-bold">Semua Wilayah</option>
+                                    @foreach($kabupatenData as $kab)
+                                        <option value="{{ $kab['id'] }}" {{ $kab['kode_kab'] == '6100' ? 'selected' : '' }}>
+                                            [{{ $kab['kode_kab'] }}] {{ $kab['name'] }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+                        <div style="height: 450px; width: 100%;">
+                            <canvas id="povertyLineChart"></canvas>
+                        </div>
+                        <div id="chartLoading" class="text-center py-5 d-none">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <p class="mt-2 text-muted">Memuat data grafik...</p>
+                        </div>
+                        <div id="chartPlaceholder" class="text-center py-5">
+                            <i class="fas fa-chart-line fa-4x text-light mb-3"></i>
+                            <h6 class="text-muted">Silakan pilih wilayah untuk menampilkan grafik perbandingan</h6>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="card border-0 shadow-sm" style="border-radius: 12px;">
+            <div class="card-header bg-white py-3 border-bottom-0">
+                <h5 class="fw-bold mb-0">Data Rinci Menurut Wilayah
+                    ({{ $selectedTahun == 'all' ? 'Semua Tahun' : $selectedTahun }})</h5>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4 border-0">Wilayah</th>
+                            <!-- <th class="text-center border-0">Rata-rata (Rp)</th> -->
+                            <th class="text-center border-0">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="border-top-0">
+
+                        @forelse($kabupatenData as $region)
+                            <tr>
+                                <td class="ps-4 fw-medium">[{{ $region['kode_kab'] }}] {{ $region['name'] }}</td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-primary border-0 btn-detail-region"
+                                        data-id="{{ $region['id'] }}" data-kode_kab="{{ $region['kode_kab'] }}"
+                                        data-name="{{ $region['name'] }}">
+                                        <i class="fas fa-eye"></i> Detail
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="2" class="text-center text-muted py-4">
+                                    <i class="fas fa-database me-2"></i>
+                                    Belum ada data pada tahun
+                                    <strong>
+                                        {{ $selectedTahun == 'all' ? 'Semua Tahun' : $selectedTahun }}
+                                    </strong>
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div class="modal fade" id="modalDetailRegion" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+                <div class="modal-header border-0 pb-0">
+                    <div>
+                        <h4 class="fw-bold mb-0" id="detailModalTitle">Detail Kemiskinan</h4>
+                        <p class="text-muted small mb-0">Analisis data per persentil berdasarkan variabel yang tersedia</p>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-4">
+                        <div class="col-lg-7">
+                            <div class="card border-0 bg-light-faded h-100" style="border-radius: 12px;">
+                                <div class="card-body p-3">
+                                    <h6 class="fw-bold mb-3"><i class="fas fa-chart-line me-2 text-primary"></i>Grafik
+                                        Perbandingan</h6>
+                                    <div style="height: 350px;">
+                                        <canvas id="modalPovertyChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-5">
+                            <div class="card border-0 bg-light-faded h-100" style="border-radius: 12px;">
+                                <div class="card-body p-3">
+                                    <h6 class="fw-bold mb-3"><i class="fas fa-table me-2 text-primary"></i>Data Tabel</h6>
+                                    <div class="table-responsive" style="max-height: 350px;">
+                                        <table class="table table-sm table-hover text-center" id="modalDetailTable"
+                                            style="font-size: 0.8rem;">
+                                            <thead class="bg-white sticky-top">
+                                                <tr id="modalTableHeader">
+                                                    <th>P</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="modalTableBody">
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@push('scripts')
+    <script>
+        const bulanNama = {!! json_encode($bulanNama) !!};
+
+        // --- 2. Interactive Line Chart (Dynamic) ---
+        const ctxLine = document.getElementById('povertyLineChart').getContext('2d');
+        const chartCanvas = document.getElementById('povertyLineChart');
+        const chartPlaceholder = document.getElementById('chartPlaceholder');
+        const chartLoading = document.getElementById('chartLoading');
+        let povertyLineChart;
+        let currentChartType = 'line';
+
+
+        // Helper to generate dynamic colors
+        function generateColor(index, total) {
+            // Ensure total is at least 1 to avoid division by zero
+            // If total is small, we can just use 360 to span the wheel, 
+            // but the user wants (index * 360 / total), so let's stick to that for distribution.
+            const hue = (index * 360 / total) % 360;
+            return `hsl(${hue}, 70%, 50%)`;
+        }
+
+
+        // Hide chart initially
+        chartCanvas.style.display = 'none';
+
+        document.getElementById('regencySelectorChart').addEventListener('change', function (e) {
+            const kabId = e.target.value;
+
+            // UI State
+            chartPlaceholder.classList.add('d-none');
+            chartLoading.classList.remove('d-none');
+            chartCanvas.style.display = 'none';
+
+            fetch(`/poverty-data/get-data/${kabId}?tahun={{ request('tahun', 'all') }}`)
+                .then(response => response.json())
+                .then(result => {
+                    const { data, variabels, kabupatens } = result;
+
+                    // Sort variables by year ascending, then by month
+                    variabels.sort((a, b) => a.tahun - b.tahun || a.bulan - b.bulan);
+
+                    chartLoading.classList.add('d-none');
+                    chartCanvas.style.display = 'block';
+
+                    const persentils = Object.keys(data).sort((a, b) => a - b);
+                    let datasets = [];
+
+                    if (kabId === 'all') {
+                        // For All Regions, create a line for EACH (Kabupaten, Variabel) pair
+                        kabupatens.forEach((kab, kIndex) => {
+                            variabels.forEach((v, vIndex) => {
+                                const lineData = persentils.map(p => {
+                                    const record = data[p].find(r =>
+                                        r.variabel_kemiskinan_id == v.id &&
+                                        r.kabupaten_id == kab.id
+                                    );
+                                    return record ? record.nilai : null;
+                                });
+
+                                // Check if this line has any data points before adding
+                                if (lineData.some(val => val !== null && Number(val) !== 0)) {
+                                    datasets.push({
+                                        label: `${kab.nama_kabupaten} - ${v.nama_variabel} ${bulanNama[v.bulan] ? `(${bulanNama[v.bulan].substring(0, 3)})` : ''} ${v.tahun}`,
+                                        data: lineData,
+                                        // Colors will be assigned later
+                                        backgroundColor: 'transparent',
+                                        tension: 0.3,
+                                        borderWidth: 2,
+                                        pointRadius: 2,
+                                        pointHoverRadius: 4,
+                                        spanGaps: true
+                                    });
+                                }
+                            });
+                        });
+                    } else {
+                        // Original logic for single region
+                        datasets = [];
+                        variabels.forEach((v, index) => {
+                            const lineData = persentils.map(p => {
+                                const record = data[p].find(r => r.variabel_kemiskinan_id == v.id);
+                                return record ? record.nilai : null;
+                            });
+
+                            if (lineData.some(val => val !== null && Number(val) !== 0)) {
+                                datasets.push({
+                                    label: `${v.nama_variabel} ${bulanNama[v.bulan] ? `(${bulanNama[v.bulan].substring(0, 3)})` : ''} ${v.tahun}`,
+                                    data: lineData,
+                                    // Colors will be assigned later
+                                    backgroundColor: 'transparent',
+                                    tension: 0.3,
+                                    borderWidth: 3,
+                                    pointRadius: 4,
+                                    pointHoverRadius: 6,
+                                    spanGaps: true
+                                });
+                            }
+                        });
+                    }
+
+                    // Assign dynamic colors based on the final total number of datasets
+                    datasets.forEach((ds, index) => {
+                        ds.borderColor = generateColor(index, datasets.length);
+                    });
+
+                    if (povertyLineChart) {
+                        povertyLineChart.destroy();
+                    }
+
+                    // --- POPULATE FILTER LIST ---
+                    const variableListContainer = document.getElementById('variableListContainer');
+                    variableListContainer.innerHTML = ''; // Clear existing
+
+                    datasets.forEach((ds, index) => {
+                        const div = document.createElement('div');
+                        div.className = 'form-check mb-1';
+                        // Use ds.borderColor for the legend dot
+                        div.innerHTML = `
+                                                            <input class="form-check-input variable-checkbox" type="checkbox" value="${index}" id="varCheck${index}" checked>
+                                                            <label class="form-check-label small text-truncate d-block" for="varCheck${index}" title="${ds.label}" style="cursor: pointer;">
+                                                                <span class="d-inline-block rounded-circle me-1" style="width: 10px; height: 10px; background-color: ${ds.borderColor}"></span>
+                                                                ${ds.label}
+                                                            </label>
+                                                        `;
+                        variableListContainer.appendChild(div);
+                    });
+
+                    // Checkbox Event Listeners
+                    document.querySelectorAll('.variable-checkbox').forEach(cb => {
+                        cb.addEventListener('change', function () {
+                            const idx = parseInt(this.value);
+                            if (povertyLineChart) {
+                                // Toggle visibility: if checked, visible (show). If unchecked, hidden.
+                                povertyLineChart.setDatasetVisibility(idx, this.checked);
+                                povertyLineChart.update();
+                            }
+                        });
+                    });
+                    // -----------------------------
+
+                    povertyLineChart = new Chart(ctxLine, {
+                        type: currentChartType,
+                        data: {
+                            labels: persentils.map(p => `P${p}`),
+                            datasets: datasets.map(ds => {
+                                if (currentChartType === 'bar') {
+                                    return {
+                                        ...ds,
+                                        backgroundColor: ds.borderColor,
+                                        borderWidth: 1
+                                    };
+                                }
+                                return ds;
+                            })
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        usePointStyle: true,
+                                        padding: 20,
+                                        font: { size: 12, weight: 'bold' }
+                                    }
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function (context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) { label += ': '; }
+                                            if (context.parsed.y !== null) {
+                                                label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(context.parsed.y);
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: false,
+                                    grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.05)' },
+                                    ticks: {
+                                        callback: function (value) {
+                                            return 'Rp ' + value.toLocaleString('id-ID');
+                                        }
+                                    },
+                                    title: { display: true, text: 'Nilai (Rupiah)', font: { weight: 'bold' } }
+                                },
+                                x: {
+                                    grid: { display: false },
+                                    title: { display: true, text: 'Persentil', font: { weight: 'bold' } }
+                                }
+                            }
+                        }
+                    });
+                });
+        });
+
+        // Handle Chart Type Switch
+        document.querySelectorAll('.chart-type-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active', 'btn-primary'));
+                this.classList.add('active', 'btn-primary');
+                currentChartType = this.dataset.type;
+
+                // Re-trigger regency selector to refresh chart
+                document.getElementById('regencySelectorChart').dispatchEvent(new Event('change'));
+            });
+        });
+
+        // Match Search Filter
+        document.getElementById('variableSearchInput').addEventListener('keyup', function () {
+            const value = this.value.toLowerCase();
+            document.querySelectorAll('#variableListContainer .form-check').forEach(div => {
+                const label = div.querySelector('label').innerText.toLowerCase();
+                div.style.display = label.includes(value) ? 'block' : 'none';
+            });
+        });
+
+        // Select All
+        document.getElementById('checkAllVars').addEventListener('click', function (e) {
+            e.preventDefault();
+            document.querySelectorAll('.variable-checkbox').forEach(cb => {
+                cb.checked = true;
+                if (div = cb.closest('.form-check')) if (div.style.display === 'none') return; // Optional: respect search? Maybe just all.
+            });
+            if (povertyLineChart) {
+                povertyLineChart.data.datasets.forEach((ds, i) => {
+                    povertyLineChart.setDatasetVisibility(i, true);
+                });
+                povertyLineChart.update();
+            }
+        });
+
+        // Select None
+        document.getElementById('uncheckAllVars').addEventListener('click', function (e) {
+            e.preventDefault();
+            document.querySelectorAll('.variable-checkbox').forEach(cb => {
+                cb.checked = false;
+            });
+            if (povertyLineChart) {
+                povertyLineChart.data.datasets.forEach((ds, i) => {
+                    povertyLineChart.setDatasetVisibility(i, false);
+                });
+                povertyLineChart.update();
+            }
+        });
+
+        // Trigger chart load for "Semua Wilayah" on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            const selector = document.getElementById('regencySelectorChart');
+            if (selector) {
+                selector.dispatchEvent(new Event('change'));
+            }
+        });
+
+        // --- 3. Detail Modal Functionality ---
+        const modalDetail = new bootstrap.Modal(document.getElementById('modalDetailRegion'));
+        const modalChartCtx = document.getElementById('modalPovertyChart').getContext('2d');
+        let modalChart;
+
+        document.querySelectorAll('.btn-detail-region').forEach(button => {
+            button.addEventListener('click', function () {
+                const kabId = this.dataset.id;
+                const kabName = this.dataset.name;
+                const kodeKab = this.dataset.kode_kab;
+
+                document.getElementById('detailModalTitle').innerText = `Detail Kemiskinan: [${kodeKab}] ${kabName}`;
+
+                // Clear previous data
+                document.getElementById('modalTableBody').innerHTML = '<tr><td colspan="5" class="py-4">Loading...</td></tr>';
+                if (modalChart) modalChart.destroy();
+
+                modalDetail.show();
+
+                fetch(`/poverty-data/get-data/${kabId}?tahun={{ request('tahun', 'all') }}`)
+                    .then(response => response.json())
+                    .then(result => {
+                        const { data, variabels } = result;
+
+                        // Sort variables by year ascending, then by month
+                        variabels.sort((a, b) => a.tahun - b.tahun || a.bulan - b.bulan);
+
+                        // Filter out variables that have no data
+                        const activeVariabels = variabels.filter(v => {
+                            return Object.keys(data).some(p => {
+                                const record = data[p].find(r => r.variabel_kemiskinan_id == v.id);
+                                return record && record.nilai !== null && record.nilai !== undefined && Number(record.nilai) !== 0;
+                            });
+                        });
+
+                        const persentils = Object.keys(data).sort((a, b) => a - b);
+
+                        // Update Table Header
+                        let header = '<th>P</th>';
+                        activeVariabels.forEach(v => {
+                            header += `<th title="${v.nama_variabel} ${v.tahun}">${v.nama_variabel.substring(0, 3)} ${bulanNama[v.bulan] ? `(${bulanNama[v.bulan].substring(0, 3)})` : ''} ${v.tahun.toString().substring(2)}</th>`;
+                        });
+                        document.getElementById('modalTableHeader').innerHTML = header;
+
+                        // Update Table Body
+                        let body = '';
+                        persentils.forEach(p => {
+                            let rowHtml = `<tr><td class="fw-bold bg-light">${p}</td>`;
+                            let hasData = false;
+
+                            activeVariabels.forEach(v => {
+                                const record = data[p].find(r => r.variabel_kemiskinan_id == v.id);
+                                if (record) {
+                                    hasData = true;
+                                    rowHtml += `<td>${Number(record.nilai).toLocaleString('id-ID', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    })}</td>`;
+                                } else {
+                                    rowHtml += `<td>-</td>`;
+                                }
+                            });
+                            rowHtml += '</tr>';
+
+                            if (hasData) {
+                                body += rowHtml;
+                            }
+                        });
+                        document.getElementById('modalTableBody').innerHTML = body;
+
+                        // Update Chart
+                        const datasets = activeVariabels.map((v, index) => {
+                            const lineData = persentils.map(p => {
+                                const record = data[p].find(r => r.variabel_kemiskinan_id == v.id);
+                                return record ? record.nilai : null;
+                            });
+
+                            return {
+                                label: `${v.nama_variabel} ${bulanNama[v.bulan] ? `(${bulanNama[v.bulan].substring(0, 3)})` : ''} ${v.tahun}`,
+                                data: lineData,
+                                borderColor: generateColor(index, activeVariabels.length),
+                                tension: 0.3,
+                                borderWidth: 2,
+                                pointRadius: 2
+                            };
+                        });
+
+                        modalChart = new Chart(modalChartCtx, {
+                            type: 'line',
+                            data: {
+                                labels: persentils.map(p => `P${p}`),
+                                datasets: datasets
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }
+                                },
+                                scales: {
+                                    y: { ticks: { font: { size: 8 } } },
+                                    x: { ticks: { font: { size: 8 } } }
+                                }
+                            }
+                        });
+                    });
+            });
+        });
+    </script>
+@endpush
+
+@push('styles')
+    <style>
+        .chart-type-btn.active {
+            background-color: var(--bps-blue) !important;
+            color: white !important;
+        }
+
+        .chart-type-btn:hover:not(.active) {
+            background-color: #f1f5f9;
+        }
+    </style>
+@endpush
