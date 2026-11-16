@@ -310,6 +310,12 @@ class FenomenaController extends Controller
             'jenisFenomenas',
         ])->findOrFail($id);
 
+        $user = auth()->user();
+        abort_if($fenomena->status_verifikasi !== 'Y' && !($user && (
+            (int) $fenomena->created_by === (int) $user->id
+            || $user->kabupaten?->kode_kab === '6100'
+        )), 404);
+
         // from = 'verification' | 'fenomena' (default)
         $from = request('from', 'fenomena');
 

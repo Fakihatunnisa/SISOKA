@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\InvalidStateException;
 
 class LoginController extends Controller
 {
@@ -15,9 +18,18 @@ class LoginController extends Controller
      *
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function redirectToGoogle()
+    public function redirectToGoogle(Request $request)
     {
-        return Socialite::driver('google')->redirect();
+        try {
+            foreach (['client_id', 'client_secret', 'redirect'] as $key) {
+                if (!config('services.google.'.$key)) {
+                    throw new \LogicException('Google OAuth configuration is incomplete.');
+                }
+            }
+            return Socialite::driver('google')->redirect();
+        } catch (\Exception $exception) {
+            return $this->authenticationFailure($request, $exception, 'redirect');
+        }
     }
 
     /**
@@ -25,13 +37,19 @@ class LoginController extends Controller
      *
      * @return \Illuminate\Contracts\Foundation\Application|\Illuminate\Foundation\Application|\Illuminate\Http\RedirectResponse|\Illuminate\Routing\Redirector
      */
-    public function handleGoogleCallback()
+    public function handleGoogleCallback(Request $request)
 
     {
+        if ($request->has('error')) {
+            return redirect('/login')->with('error', 'Login Google dibatalkan atau tidak diizinkan. Silakan coba lagi.');
+        }
         try {
             $googleUser = Socialite::driver('google')->user();
+            if (!$googleUser->getId() || !filter_var($googleUser->getEmail(), FILTER_VALIDATE_EMAIL)) {
+                throw new \UnexpectedValueException('Google identity is incomplete.');
+            }
         } catch (\Exception $e) {
-            return redirect('/login')->with('error', 'Google authentication failed.');
+            return $this->authenticationFailure($request, $e, 'callback');
         }
 
         $user = User::where('google_id', $googleUser->id)->orWhere('email', $googleUser->email)->first();
@@ -46,22 +64,14 @@ class LoginController extends Controller
             }
 
             Auth::login($user);
+            $request->session()->regenerate();
             if ($user->role === 'admin') {
                 return redirect()->route('admin.dashboard');
             }
             // Check if profile is complete
-            if (empty($user->no_hp) || empty($user->kabupaten_id)) {
+            if (empty($user->no_hp) || empty($user->kabupaten_id) || $user->status !== 'active') {
 
                 return redirect()->route('complete-profile');
-            }
-
-            // Check status
-            if ($user->status !== 'approved' && $user->role !== 'admin') { // Assuming 'admin' role bypasses or status logic
-                // You might want to log them out or show a "pending" page.
-                // For now, let's redirect to complete profile if pending, or dashboard with specific view.
-                // Implementation plan said: "redirect to completion page" if info missing.
-                // If info present but pending?
-                // Let's assume dashboard handles pending state or we redirect to a 'wait' page.
             }
 
             return redirect()->intended('/dashboard');
@@ -79,8 +89,43 @@ class LoginController extends Controller
             ]);
 
             Auth::login($newUser);
+            $request->session()->regenerate();
 
             return redirect()->route('complete-profile');
         }
+    }
+
+    private function authenticationFailure(Request $request, \Exception $exception, string $stage)
+    {
+        $reference = (string) Str::uuid();
+        $invalidState = $exception instanceof InvalidStateException;
+        $upstreamStatus = null;
+        $providerError = null;
+        if ($exception instanceof \GuzzleHttp\Exception\RequestException && $exception->hasResponse()) {
+            $response = $exception->getResponse();
+            $upstreamStatus = $response->getStatusCode();
+            $error = json_decode((string) $response->getBody(), true)['error'] ?? null;
+            if (in_array($error, ['invalid_grant', 'invalid_client', 'redirect_uri_mismatch', 'access_denied', 'temporarily_unavailable', 'server_error'], true)) {
+                $providerError = $error;
+            }
+        }
+        // Do not log exception messages, OAuth codes, tokens, session IDs or query strings.
+        Log::warning('Google authentication failed', [
+            'reference' => $reference,
+            'stage' => $stage,
+            'reason' => $invalidState ? 'invalid_state' : get_class($exception),
+            'upstream_status' => $upstreamStatus,
+            'provider_error' => $providerError,
+            'request_host' => $request->getHost(),
+            'callback_host' => parse_url(config('services.google.redirect', ''), PHP_URL_HOST),
+            'session_driver' => config('session.driver'),
+            'session_cookie_present' => $request->cookies->has(config('session.cookie')),
+        ]);
+
+        $message = $invalidState
+            ? 'Sesi login Google tidak cocok atau sudah berakhir. Tutup tab login lain, lalu mulai lagi dari halaman login SISOKA.'
+            : 'Login Google gagal diproses. Silakan coba lagi atau hubungi administrator.';
+
+        return redirect('/login')->with('error', $message.' Referensi: '.$reference);
     }
 }

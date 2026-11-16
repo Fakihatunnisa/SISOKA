@@ -1,5 +1,10 @@
 # SISOKA - Sistem Informasi Sosial Kalimantan Barat
 
+## Maintenance documentation
+
+- [Access, data integrity and audit fixes](docs/audit-fixes.md)
+- [Google authentication, OTP configuration and decimal input](docs/google-authentication.md)
+
 ## Deskripsi
 
 SISOKA adalah aplikasi berbasis web yang dikembangkan menggunakan Laravel untuk mendukung pengelolaan, visualisasi, monitoring, dan verifikasi data statistik sosial di lingkungan BPS Provinsi Kalimantan Barat.

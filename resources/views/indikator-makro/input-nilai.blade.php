@@ -558,7 +558,8 @@
                                                     if ($dotPos !== false) {
                                                         $decimals = strlen($strVal) - $dotPos - 1;
                                                     }
-                                                    $val = number_format($floatVal, $decimals, '.', ',');
+                                                    // Three fractional digits would look like a legacy thousands group on re-submit.
+                                                    $val = number_format($floatVal, $decimals === 3 ? 4 : $decimals, '.', ',');
                                                 }
                                             }
                                             $isDisabled = !$selectedPeriode->is_active || !$selectedIndikator->is_active || !$indDim->is_active;
@@ -698,8 +699,8 @@ document.addEventListener('DOMContentLoaded', function () {
             return '';
         }
         
-        // Strip percentage, Rp currency symbol, spaces, and other non-numeric chars except commas, dots, and minus sign
-        cleanVal = cleanVal.replace(/[^0-9,\.\-]/g, '');
+        // Preserve invalid text so server validation can reject it instead of clearing a value.
+        cleanVal = cleanVal.replace(/^Rp\s*/i, '').replace(/\s*%$/, '');
         return cleanVal;
     }
 

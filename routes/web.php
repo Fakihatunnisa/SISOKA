@@ -96,8 +96,8 @@ Route::middleware(['auth', 'check.status'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/complete-profile', [ProfileCompletionController::class, 'show'])->name('complete-profile');
     Route::post('/complete-profile', [ProfileCompletionController::class, 'update'])->name('complete-profile.update');
-    Route::post('/complete-profile/verify-otp', [ProfileCompletionController::class, 'verifyOtp'])->name('complete-profile.verify-otp');
-    Route::post('/complete-profile/resend-otp', [ProfileCompletionController::class, 'resendOtp'])->name('complete-profile.resend-otp');
+    Route::post('/complete-profile/verify-otp', [ProfileCompletionController::class, 'verifyOtp'])->middleware('throttle:5,5')->name('complete-profile.verify-otp');
+    Route::post('/complete-profile/resend-otp', [ProfileCompletionController::class, 'resendOtp'])->middleware('throttle:3,5')->name('complete-profile.resend-otp');
     Route::post('/complete-profile/reset-number', [ProfileCompletionController::class, 'resetNumber'])->name('complete-profile.reset-number');
 
     // Menu Kemiskinan

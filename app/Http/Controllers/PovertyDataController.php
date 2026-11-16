@@ -24,10 +24,18 @@ class PovertyDataController extends Controller
         // Parse data from textarea
         $lines = preg_split('/\r\n|\r|\n/', $request->raw_data);
         $values = [];
-        foreach ($lines as $line) {
+        // Ignore only surrounding newlines; interior blanks must not shift percentiles.
+        while ($lines && trim($lines[0]) === '') {
+            array_shift($lines);
+        }
+        while ($lines && trim($lines[count($lines) - 1]) === '') {
+            array_pop($lines);
+        }
+        foreach ($lines as $index => $line) {
             $line = trim($line);
-            if ($line === '')
-                continue;
+            if ($line === '') {
+                return back()->withErrors(['raw_data' => 'Baris '.($index + 1).' kosong. Data belum disimpan.'])->withInput();
+            }
 
             // HANYA jika ada titik, hapus titik (pemisah ribuan)
             if (str_contains($line, '.')) {
@@ -38,6 +46,8 @@ class PovertyDataController extends Controller
             $value = str_replace(',', '.', $line);
             if (is_numeric($value)) {
                 $values[] = floatval($value);
+            } else {
+                return back()->withErrors(['raw_data' => 'Baris '.($index + 1).' bukan angka yang valid. Data belum disimpan.'])->withInput();
             }
         }
         $countValues = count($values);

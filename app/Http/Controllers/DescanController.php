@@ -498,6 +498,8 @@ class DescanController extends Controller
         $kabupaten = $user->kabupaten;
         $isProvinsi = $kabupaten && $kabupaten->kode_kab == '6100';
 
+        abort_unless($kabupaten, 403);
+
         $request->validate([
             'periode_id' => 'required|exists:descan_periode,id',
             'kabupaten_id' => 'required|exists:tb_kabupaten,id',
@@ -507,6 +509,11 @@ class DescanController extends Controller
 
         // Paksa kabupaten_id sesuai user jika bukan provinsi
         $kabupatenId = $isProvinsi ? $request->kabupaten_id : $kabupaten->id;
+
+        $request->validate([
+            'kecamatan_id' => [\Illuminate\Validation\Rule::exists('tb_kecamatan', 'id')->where('kabupaten_id', $kabupatenId)],
+            'desa_id' => [\Illuminate\Validation\Rule::exists('tb_desa', 'id')->where('kecamatan_id', $request->kecamatan_id)],
+        ]);
 
         // Cek apakah periode aktif
         $periode = DescanPeriode::findOrFail($request->periode_id);
@@ -536,6 +543,7 @@ class DescanController extends Controller
     public function destroyPeserta($id)
     {
         $peserta = DescanPeserta::with('periode')->findOrFail($id);
+        $this->authorizePeserta($peserta);
 
         // Cek apakah sudah ada data terkait (progres atau penilaian)
         $hasProgress = DescanProgressDesa::where('peserta_id', $id)->exists();
@@ -863,6 +871,7 @@ class DescanController extends Controller
             'outputs.updater.kabupaten',
             'buktiDukungs.creator.kabupaten'
         ])->findOrFail($peserta_id);
+        $this->authorizePeserta($peserta);
         $kegiatans = DescanKegiatan::where('is_active', true)
             ->leftJoin('descan_progress_desa', function ($join) use ($peserta_id) {
                 $join->on('descan_kegiatan.id', '=', 'descan_progress_desa.kegiatan_id')
@@ -918,6 +927,7 @@ class DescanController extends Controller
 
         $peserta = DescanPeserta::with('periode')->findOrFail($peserta_id);
 
+        $this->authorizePeserta($peserta);
         if (!$peserta->periode->is_active) {
             return back()->with('error', "Periode {$peserta->periode->tahun} sudah tidak aktif. Anda tidak dapat melakukan perubahan data progress.");
         }
@@ -1424,6 +1434,15 @@ class DescanController extends Controller
     // =========================================================
     // AJAX ENDPOINTS (Dropdown bertingkat)
     // =========================================================
+
+    private function authorizePeserta(DescanPeserta $peserta): void
+    {
+        $user = Auth::user();
+        abort_unless($user && $user->kabupaten && (
+            $user->kabupaten->kode_kab === '6100'
+            || (int) $peserta->kabupaten_id === (int) $user->kabupaten_id
+        ), 403);
+    }
 
     public function ajaxKecamatan(Request $request)
     {

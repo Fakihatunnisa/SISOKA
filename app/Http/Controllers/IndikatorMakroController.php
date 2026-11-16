@@ -223,56 +223,59 @@ class IndikatorMakroController extends Controller
     public function storeNilai(Request $request)
     {
         $request->validate([
-            'periode_indikator_id' => 'required|exists:periode_indikators,id',
-            'indikator_makro_id' => 'required|exists:indikator_makros,id',
+            'periode_indikator_id' => 'required|integer|exists:periode_indikators,id',
+            'indikator_makro_id' => 'required|integer|exists:indikator_makros,id',
             'nilai' => 'nullable|array',
+            'nilai.*' => 'array',
         ]);
 
         $periodeId = $request->periode_indikator_id;
         $indikatorMakroId = $request->indikator_makro_id;
         $userId = auth()->id();
 
-        if ($request->has('nilai')) {
-            foreach ($request->nilai as $kabupatenId => $dimensiValues) {
-                // Ensure kabupaten exists
-                if (!Kabupaten::where('id', $kabupatenId)->exists()) {
-                    continue;
-                }
+        abort_unless(PeriodeIndikator::findOrFail($periodeId)->is_active
+            && IndikatorMakro::findOrFail($indikatorMakroId)->is_active, 403);
 
-                foreach ($dimensiValues as $indikatorDimensiId => $nilaiRaw) {
-                    // Ensure IndikatorDimensi exists and belongs to this indicator
-                    $indDim = IndikatorDimensi::where('id', $indikatorDimensiId)
-                        ->where('indikator_makro_id', $indikatorMakroId)
-                        ->first();
-                    if (!$indDim) {
-                        continue;
-                    }
-
-                    if ($nilaiRaw === null || $nilaiRaw === '') {
-                        NilaiIndikatorMakro::where([
-                            'periode_indikator_id' => $periodeId,
-                            'kabupaten_id' => $kabupatenId,
-                            'indikator_dimensi_id' => $indikatorDimensiId,
-                        ])->delete();
-                    } else {
-                        $nilaiClean = $this->cleanFloatValue($nilaiRaw);
-
-                        $record = NilaiIndikatorMakro::firstOrNew([
-                            'periode_indikator_id' => $periodeId,
-                            'kabupaten_id' => $kabupatenId,
-                            'indikator_dimensi_id' => $indikatorDimensiId,
-                        ]);
-
-                        if (!$record->exists) {
-                            $record->created_by = $userId;
-                        }
-                        $record->nilai = $nilaiClean;
-                        $record->updated_by = $userId;
-                        $record->save();
-                    }
+        // Validate and normalize the complete payload before changing any rows.
+        $normalized = [];
+        foreach (($request->input('nilai') ?? []) as $kabupatenId => $dimensiValues) {
+            abort_unless(Kabupaten::whereKey($kabupatenId)->exists(), 422);
+            foreach ($dimensiValues as $dimensiId => $raw) {
+                $dimension = IndikatorDimensi::whereKey($dimensiId)
+                    ->where('indikator_makro_id', $indikatorMakroId)->first();
+                abort_unless($dimension && $dimension->is_active, 403);
+                try {
+                    $normalized[$kabupatenId][$dimensiId] = $this->cleanFloatValue($raw);
+                } catch (\InvalidArgumentException $exception) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "nilai.$kabupatenId.$dimensiId" => 'Masukkan angka yang valid. Gunakan koma atau titik sebagai desimal.',
+                    ]);
                 }
             }
         }
+        DB::transaction(function () use ($normalized, $periodeId, $userId) {
+            foreach ($normalized as $kabupatenId => $dimensiValues) {
+                foreach ($dimensiValues as $indikatorDimensiId => $nilai) {
+                    $key = [
+                        'periode_indikator_id' => $periodeId,
+                        'kabupaten_id' => $kabupatenId,
+                        'indikator_dimensi_id' => $indikatorDimensiId,
+                    ];
+                    if ($nilai === null) {
+                        NilaiIndikatorMakro::where($key)->delete();
+                        continue;
+                    }
+
+                    $record = NilaiIndikatorMakro::firstOrNew($key);
+                    if (!$record->exists) {
+                        $record->created_by = $userId;
+                    }
+                    $record->nilai = $nilai;
+                    $record->updated_by = $userId;
+                    $record->save();
+                }
+            }
+        });
 
         $previousUrl = url()->previous();
         if (!str_contains($previousUrl, '#tabel')) {
@@ -964,50 +967,6 @@ class IndikatorMakroController extends Controller
 
     private function cleanFloatValue($val)
     {
-        if ($val === null || $val === '') {
-            return null;
-        }
-
-        $val = trim($val);
-
-        // Remove Rp currency symbol, space, percentage, etc.
-        $val = preg_replace('/[^0-9,\.\-]/', '', $val);
-
-        // Standardize based on existence of both separators
-        if (strpos($val, '.') !== false && strpos($val, ',') !== false) {
-            if (strpos($val, '.') < strpos($val, ',')) {
-                // dot is thousands, comma is decimal (Indonesian format: 54.748.977,00)
-                $val = str_replace('.', '', $val);
-                $val = str_replace(',', '.', $val);
-            } else {
-                // comma is thousands, dot is decimal (US format: 54,748,977.00)
-                $val = str_replace(',', '', $val);
-            }
-        } else {
-            // Only one type of separator or none
-            if (strpos($val, ',') !== false) {
-                // Comma could be decimal or thousands
-                $parts = explode(',', $val);
-                if (count($parts) === 2 && strlen($parts[1]) !== 3) {
-                    // Decimal: e.g. 12,34
-                    $val = str_replace(',', '.', $val);
-                } else {
-                    // Thousands: e.g. 12,345 or multiple commas
-                    $val = str_replace(',', '', $val);
-                }
-            } elseif (strpos($val, '.') !== false) {
-                // Dot could be decimal or thousands
-                $parts = explode('.', $val);
-                if (count($parts) === 2 && strlen($parts[1]) !== 3) {
-                    // Decimal: e.g. 12.34
-                    // Keep dot
-                } else {
-                    // Thousands: e.g. 12.345 or multiple dots
-                    $val = str_replace('.', '', $val);
-                }
-            }
-        }
-
-        return (float) $val;
+        return \App\Support\DecimalInput::parse($val);
     }
 }
