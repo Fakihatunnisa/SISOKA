@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use Tests\TestCase;
+use PHPUnit\Framework\Attributes\Test;
 
 class SerutiTest extends TestCase
 {
@@ -41,7 +42,7 @@ class SerutiTest extends TestCase
         $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
     }
 
-    /** @test */
+    #[Test]
     public function authenticated_user_can_access_seruti_dashboard()
     {
         $response = $this->actingAs($this->user)->get(route('seruti.index'));
@@ -50,7 +51,7 @@ class SerutiTest extends TestCase
         $response->assertViewIs('seruti.index');
     }
 
-    /** @test */
+    #[Test]
     public function user_can_store_consumption_data()
     {
         $coicop = Coicop::create(['kode' => '01', 'nama' => 'Makanan', 'seruti' => 'Makanan']);
@@ -73,7 +74,7 @@ class SerutiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function user_can_get_table_data()
     {
         $coicop = Coicop::create(['kode' => '01', 'nama' => 'Makanan', 'seruti' => 'Makanan']);
@@ -96,7 +97,7 @@ class SerutiTest extends TestCase
         $response->assertJsonFragment(['value' => 75000]);
     }
 
-    /** @test */
+    #[Test]
     public function it_detects_anomalies_in_chart_data()
     {
         $coicop = Coicop::create(['kode' => '01', 'nama' => 'Makanan', 'seruti' => 'Makanan']);
@@ -121,7 +122,7 @@ class SerutiTest extends TestCase
         $response->assertJsonPath('anomalies.0.type', 'Tinggi');
     }
 
-    /** @test */
+    #[Test]
     public function user_can_store_coicop_master_data()
     {
         $payload = [
@@ -136,7 +137,7 @@ class SerutiTest extends TestCase
         $this->assertDatabaseHas('coicops', ['kode' => '99']);
     }
 
-    /** @test */
+    #[Test]
     public function user_cannot_delete_coicop_with_usage()
     {
         $coicop = Coicop::create(['kode' => '01', 'nama' => 'Makanan', 'seruti' => 'Makanan']);
@@ -155,7 +156,7 @@ class SerutiTest extends TestCase
         $this->assertDatabaseHas('coicops', ['id' => $coicop->id]);
     }
 
-    /** @test */
+    #[Test]
     public function user_can_clear_consumption_data()
     {
         $period = Period::create(['year' => 2024, 'quarter' => 1]);

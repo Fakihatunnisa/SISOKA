@@ -267,15 +267,27 @@ class RhNilaiController extends Controller
             }
         }
 
-        $activeYear = RhTahun::where('id', $request->input('rh_tahun_id'))->first();
-        if ($activeYear->is_active == false) {
-            return redirect('/price-range')->with('error', 'Admin telah menonaktifkan tahun RH ' . $activeYear->tahun . '. Silakan gunakan tahun yang aktif.');
+        $request->validate([
+            'rh_tahun_id' => 'required|integer|exists:tb_rh_tahun,id',
+            'kabupaten_id' => 'required|integer|exists:tb_kabupaten,id',
+            'master' => 'sometimes|array',
+            'revision' => 'sometimes|array',
+            'revision.*' => 'array',
+        ]);
+
+        $activeYear = RhTahun::findOrFail($request->rh_tahun_id);
+        if (!$activeYear->is_active) {
+            return redirect('/price-range')->with('error', 'Tahun RH sudah tidak aktif.');
         }
 
-        $request->validate([
-            'rh_tahun_id' => 'required|exists:tb_rh_tahun,id',
-            'kabupaten_id' => 'required|exists:tb_kabupaten,id',
-        ]);
+        // Validate every header before writing any master or revision values.
+        foreach (array_keys($request->input('revision', [])) as $headerId) {
+            if (!RhPerubahanHeader::where('id', $headerId)->where('rh_tahun_id', $activeYear->id)->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'revision' => 'Header perubahan tidak sesuai dengan tahun RH yang dipilih.',
+                ]);
+            }
+        }
 
         $kabupatenId = $request->kabupaten_id;
         $tahunId = $request->rh_tahun_id;

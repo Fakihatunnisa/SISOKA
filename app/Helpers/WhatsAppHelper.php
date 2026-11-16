@@ -2,37 +2,29 @@
 
 namespace App\Helpers;
 
+use Illuminate\Support\Facades\Http;
+
 class WhatsAppHelper
 {
-    public static function kirimPesanWhatsApp($phone, $message)
+    public static function kirimPesanWhatsApp($phone, $message): bool
     {
-        $token = config('services.whatsapp.token');
+        if (!config('services.whatsapp.token')) {
+            return false;
+        }
+        try {
+            $response = Http::asForm()->connectTimeout(5)->timeout(15)
+                ->post(config('services.whatsapp.url') ?: 'https://wanesia.com/api/send_message', [
+                    'token' => config('services.whatsapp.token'),
+                    'number' => $phone,
+                    'message' => $message,
+                ]);
 
-        $curl = curl_init();
-
-        curl_setopt_array($curl, array(
-            CURLOPT_URL => 'https://wanesia.com/api/send_message',
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_ENCODING => '',
-            CURLOPT_MAXREDIRS => 10,
-            CURLOPT_TIMEOUT => 0,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-            CURLOPT_CUSTOMREQUEST => 'POST',
-            CURLOPT_POSTFIELDS => http_build_query([
-                'token' => $token,
-                'number' => $phone,
-                'message' => $message,
-            ]),
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/x-www-form-urlencoded'
-            ],
-        ));
-
-        $response = curl_exec($curl);
-        curl_close($curl);
-
-        return $response;
+            // Fail closed on transport errors, provider errors and unknown responses.
+            return $response->successful()
+                && in_array($response->json('status'), [true, 'success'], true);
+        } catch (\Illuminate\Http\Client\ConnectionException $exception) {
+            return false;
+        }
     }
 
 }
