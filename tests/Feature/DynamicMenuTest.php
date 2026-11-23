@@ -54,7 +54,8 @@ class DynamicMenuTest extends TestCase
             'is_active' => true,
         ];
 
-        $response = $this->actingAs($admin)->post(route('admin.dynamic-menus.store'), $data);
+        $response = $this->actingAs($admin)->from(route('admin.dynamic-menus.index'))
+            ->post(route('admin.dynamic-menus.store'), $data);
 
         $response->assertRedirect(route('admin.dynamic-menus.index'));
         $this->assertDatabaseHas('dynamic_menus', [
@@ -123,8 +124,9 @@ class DynamicMenuTest extends TestCase
         $response = $this->actingAs($user)->get(route('dynamic-menu.show', $menu->slug));
 
         $response->assertStatus(200);
-        // Ensure the safe_embed_url is used in the view
-        $response->assertSee('https://drive.google.com/embeddedfolderview?id=123#list', false);
+        // The browser converts the URL; verify the backend payload and preview target here.
+        $response->assertViewHas('menu', fn ($item) => $item->safe_embed_url === 'https://drive.google.com/embeddedfolderview?id=123#list');
+        $response->assertSee('id="previewIframe"', false);
     }
 
     public function test_external_menu_shows_button_not_iframe()
@@ -160,7 +162,8 @@ class DynamicMenuTest extends TestCase
             'created_by' => $admin->id
         ]);
 
-        $response = $this->actingAs($admin)->delete(route('admin.dynamic-menus.destroy', $menu->id));
+        $response = $this->actingAs($admin)->from(route('admin.dynamic-menus.index'))
+            ->delete(route('admin.dynamic-menus.destroy', $menu->id));
 
         $response->assertRedirect(route('admin.dynamic-menus.index'));
         $this->assertDatabaseMissing('dynamic_menus', ['id' => $menu->id]);

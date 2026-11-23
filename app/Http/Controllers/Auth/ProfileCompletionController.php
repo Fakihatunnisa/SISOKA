@@ -30,9 +30,11 @@ class ProfileCompletionController extends Controller
     public function update(Request $request)
     {
         $user = Auth::user();
+        abort_if($user->status === 'active', 403);
         if (!empty($user->otp_code) && is_null($user->no_hp_verified_at)) {
             return back()->with('error', 'Anda sudah mengirimkan kode OTP.');
         }
+        $request->validate(['no_hp' => 'required|string']);
         $rawNoHp = $request->no_hp;
 
         // Hapus semua selain angka
@@ -49,7 +51,7 @@ class ProfileCompletionController extends Controller
             'name' => 'required|string|max:255',
             'no_hp' => [
                 'required',
-                'numeric',
+                'regex:/^62[0-9]{8,13}$/',
                 Rule::unique('users', 'no_hp')->ignore(auth()->id()),
             ],
             'kabupaten_id' => 'required|exists:tb_kabupaten,id',
@@ -57,37 +59,30 @@ class ProfileCompletionController extends Controller
         ], [
             'name.required' => 'Nama Lengkap wajib diisi.',
             'no_hp.required' => 'Nomor WhatsApp wajib diisi.',
-            'no_hp.numeric' => 'Nomor WhatsApp hanya boleh berisi angka.',
+            'no_hp.regex' => 'Nomor WhatsApp harus diawali 62 dan berisi 10 sampai 15 digit.',
             'no_hp.unique' => 'Nomor WhatsApp sudah digunakan oleh pengguna lain.',
             'kabupaten_id.required' => 'Silakan pilih Kabupaten/Kota.',
             'team.required' => 'Silakan pilih Unit Kerja.',
         ]);
 
-        //$user = Auth::user();
-
-
-
-
-        /** @var \App\Models\User $user */
-
-        // Save profile data but keep status/verified pending
+        // Profile completion always requires phone verification and approval.
         $user->update([
             'name' => $request->name,
             'no_hp' => $request->no_hp,
             'kabupaten_id' => $request->kabupaten_id,
             'team' => $request->team,
             'role' => 'user', // Ensure default role
-            // Status remains whatever it was or 'pending' initiation? 
-            // We don't set status to 'pending' yet until phone is verified?
-            // Actually, if they update profile, they are starting the process.
-            // But if they are just updating info, we generate OTP.
+            'status' => 'pending',
+            'no_hp_verified_at' => null,
         ]);
 
         // Generate and Send OTP
-        $this->generateAndSendOtp($user);
+        if (!$this->generateAndSendOtp($user)) {
+            return redirect('/complete-profile')->with('error', 'Kode OTP gagal dikirim. Silakan coba kirim ulang.');
+        }
 
 
-        return redirect('/complete-profile')->with('success', 'Sementara Kode OTP dikirim disini, kode Anda adalah ' . $user->otp_code . '  Silakan masukkan kode untuk verifikasi.');
+        return redirect('/complete-profile')->with('success', 'Kode OTP telah dikirim ke nomor WhatsApp Anda.');
     }
 
     public function verifyOtp(Request $request)
@@ -101,6 +96,7 @@ class ProfileCompletionController extends Controller
         ]);
 
         $user = Auth::user();
+        abort_if($user->status === 'active', 403);
         /** @var \App\Models\User $user */
 
         if (!$user->otp_code || !$user->otp_expires_at) {
@@ -111,7 +107,7 @@ class ProfileCompletionController extends Controller
             return back()->with('error', 'Kode OTP telah kedaluwarsa. Silakan minta kode baru.');
         }
 
-        if ($request->otp_code !== $user->otp_code) {
+        if (!hash_equals((string) $user->otp_code, $request->otp_code)) {
             return back()->with('error', 'Kode OTP salah. Silakan coba lagi.');
         }
 
@@ -130,10 +126,11 @@ class ProfileCompletionController extends Controller
     {
 
         $user = Auth::user();
-        if (!$user->otp_code || !$user->otp_expires_at) {
-            return back()->with('error', 'Tidak ada permintaan OTP yang aktif. Silakan minta kode baru.');
+        abort_if($user->status === 'active', 403);
+        if ($user->no_hp_verified_at) {
+            return back()->with('error', 'Nomor WhatsApp sudah diverifikasi.');
         }
-        if (\Carbon\Carbon::now()->lt($user->otp_expires_at)) {
+        if ($user->otp_expires_at && \Carbon\Carbon::now()->lt($user->otp_expires_at)) {
             $remaining = \Carbon\Carbon::now()->diffInSeconds($user->otp_expires_at);
             return back()->with('error', 'Silakan tunggu ' . gmdate('i:s', $remaining) . ' sebelum mengirim ulang kode OTP.');
         }
@@ -142,15 +139,18 @@ class ProfileCompletionController extends Controller
             return back()->with('error', 'Nomor HP belum terdaftar. Silakan isi data profil kembali.');
         }
 
-        $this->generateAndSendOtp($user);
+        if (!$this->generateAndSendOtp($user)) {
+            return back()->with('error', 'Kode OTP gagal dikirim. Silakan coba lagi.');
+        }
 
-        return back()->with('success', 'Kode OTP baru telah dikirim disini, Kode Anda adalah Silakan masukkan kode untuk verifikasi.');
+        return back()->with('success', 'Kode OTP baru telah dikirim ke nomor WhatsApp Anda.');
     }
 
     public function resetNumber()
     {
 
         $user = Auth::user();
+        abort_if($user->status === 'active', 403);
 
         // Check if OTP is still valid (not expired)
         if ($user->otp_expires_at && \Carbon\Carbon::now()->lt($user->otp_expires_at)) {
@@ -169,7 +169,7 @@ class ProfileCompletionController extends Controller
 
     private function generateAndSendOtp($user)
     {
-        $otp = rand(100000, 999999);
+        $otp = (string) random_int(100000, 999999);
         $expiresAt = \Carbon\Carbon::now()->addMinutes(5);
 
         $user->update([
@@ -177,13 +177,14 @@ class ProfileCompletionController extends Controller
             'otp_expires_at' => $expiresAt
         ]);
 
-        // $message = "Halo {$user->name},\n\n";
-        // $message .= "Kode OTP verifikasi Anda adalah: *{$otp}*\n";
-        // $message .= "Kode ini berlaku selama 5 menit.\n\n";
-        // $message .= "Jangan berikan kode ini kepada siapapun.\n\n";
-        // $message .= "*Salam,* \n";
-        // $message .= "*Tim Sosial BPS Provinsi Kalbar*";
+        $message = "Kode OTP verifikasi SISOKA Anda: {$otp}. Berlaku selama 5 menit. Jangan bagikan kode ini.";
+        if (!\App\Helpers\WhatsAppHelper::kirimPesanWhatsApp($user->no_hp, $message)) {
+            // Invalidate failed deliveries and allow an immediate retry.
+            $user->update(['otp_code' => null, 'otp_expires_at' => null]);
+            return false;
+        }
 
-        // \App\Helpers\WhatsAppHelper::kirimPesanWhatsApp($user->no_hp, $message);
+        return true;
+
     }
 }

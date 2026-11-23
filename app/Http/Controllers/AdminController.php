@@ -93,7 +93,7 @@ class AdminController extends Controller
     {
 
         $user = User::findOrFail($id);
-        if ($user->otp_code != null) {
+        if ($user->otp_code != null || !$user->no_hp_verified_at) {
             return redirect()->back()->with('error', 'Akun pengguna belum melakukan verifikasi nomor WhatsApp.');
         }
         if ($user->kabupaten_id == null) {
